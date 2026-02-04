@@ -1,0 +1,187 @@
+{
+  "intent_routing": {
+    "BUCKET_A": {
+      "description": "Direct/FAQ/Database - No LLM needed",
+      "cost": "Zero",
+      "intents": [
+        "check_invoice",
+        "check_payment_methods",
+        "check_refund_policy",
+        "check_cancellation_fee",
+        "delivery_period",
+        "delivery_options",
+        "track_order",
+        "track_refund"
+      ]
+    },
+    "BUCKET_B": {
+      "description": "RAG + Small LLM - Procedural with context",
+      "cost": "Low",
+      "intents": [
+        "cancel_order",
+        "change_order",
+        "place_order",
+        "get_invoice",
+        "get_refund",
+        "set_up_shipping_address",
+        "change_shipping_address",
+        "create_account",
+        "edit_account",
+        "switch_account",
+        "delete_account",
+        "recover_password",
+        "registration_problems",
+        "newsletter_subscription",
+        "review"
+      ]
+    },
+    "BUCKET_C": {
+      "description": "Escalation - Big LLM or Human agent",
+      "cost": "High",
+      "intents": [
+        "complaint",
+        "payment_issue",
+        "contact_customer_service",
+        "contact_human_agent"
+      ]
+    }
+  },
+  "intent_to_bucket_mapping": {
+    "check_invoice": {
+      "bucket": "BUCKET_A",
+      "description": "Direct/FAQ/Database - No LLM needed",
+      "cost": "Zero"
+    },
+    "check_payment_methods": {
+      "bucket": "BUCKET_A",
+      "description": "Direct/FAQ/Database - No LLM needed",
+      "cost": "Zero"
+    },
+    "check_refund_policy": {
+      "bucket": "BUCKET_A",
+      "description": "Direct/FAQ/Database - No LLM needed",
+      "cost": "Zero"
+    },
+    "check_cancellation_fee": {
+      "bucket": "BUCKET_A",
+      "description": "Direct/FAQ/Database - No LLM needed",
+      "cost": "Zero"
+    },
+    "delivery_period": {
+      "bucket": "BUCKET_A",
+      "description": "Direct/FAQ/Database - No LLM needed",
+      "cost": "Zero"
+    },
+    "delivery_options": {
+      "bucket": "BUCKET_A",
+      "description": "Direct/FAQ/Database - No LLM needed",
+      "cost": "Zero"
+    },
+    "track_order": {
+      "bucket": "BUCKET_A",
+      "description": "Direct/FAQ/Database - No LLM needed",
+      "cost": "Zero"
+    },
+    "track_refund": {
+      "bucket": "BUCKET_A",
+      "description": "Direct/FAQ/Database - No LLM needed",
+      "cost": "Zero"
+    },
+    "cancel_order": {
+      "bucket": "BUCKET_B",
+      "description": "RAG + Small LLM - Procedural with context",
+      "cost": "Low"
+    },
+    "change_order": {
+      "bucket": "BUCKET_B",
+      "description": "RAG + Small LLM - Procedural with context",
+      "cost": "Low"
+    },
+    "place_order": {
+      "bucket": "BUCKET_B",
+      "description": "RAG + Small LLM - Procedural with context",
+      "cost": "Low"
+    },
+    "get_invoice": {
+      "bucket": "BUCKET_B",
+      "description": "RAG + Small LLM - Procedural with context",
+      "cost": "Low"
+    },
+    "get_refund": {
+      "bucket": "BUCKET_B",
+      "description": "RAG + Small LLM - Procedural with context",
+      "cost": "Low"
+    },
+    "set_up_shipping_address": {
+      "bucket": "BUCKET_B",
+      "description": "RAG + Small LLM - Procedural with context",
+      "cost": "Low"
+    },
+    "change_shipping_address": {
+      "bucket": "BUCKET_B",
+      "description": "RAG + Small LLM - Procedural with context",
+      "cost": "Low"
+    },
+    "create_account": {
+      "bucket": "BUCKET_B",
+      "description": "RAG + Small LLM - Procedural with context",
+      "cost": "Low"
+    },
+    "edit_account": {
+      "bucket": "BUCKET_B",
+      "description": "RAG + Small LLM - Procedural with context",
+      "cost": "Low"
+    },
+    "switch_account": {
+      "bucket": "BUCKET_B",
+      "description": "RAG + Small LLM - Procedural with context",
+      "cost": "Low"
+    },
+    "delete_account": {
+      "bucket": "BUCKET_B",
+      "description": "RAG + Small LLM - Procedural with context",
+      "cost": "Low"
+    },
+    "recover_password": {
+      "bucket": "BUCKET_B",
+      "description": "RAG + Small LLM - Procedural with context",
+      "cost": "Low"
+    },
+    "registration_problems": {
+      "bucket": "BUCKET_B",
+      "description": "RAG + Small LLM - Procedural with context",
+      "cost": "Low"
+    },
+    "newsletter_subscription": {
+      "bucket": "BUCKET_B",
+      "description": "RAG + Small LLM - Procedural with context",
+      "cost": "Low"
+    },
+    "review": {
+      "bucket": "BUCKET_B",
+      "description": "RAG + Small LLM - Procedural with context",
+      "cost": "Low"
+    },
+    "complaint": {
+      "bucket": "BUCKET_C",
+      "description": "Escalation - Big LLM or Human agent",
+      "cost": "High"
+    },
+    "payment_issue": {
+      "bucket": "BUCKET_C",
+      "description": "Escalation - Big LLM or Human agent",
+      "cost": "High"
+    },
+    "contact_customer_service": {
+      "bucket": "BUCKET_C",
+      "description": "Escalation - Big LLM or Human agent",
+      "cost": "High"
+    },
+    "contact_human_agent": {
+      "bucket": "BUCKET_C",
+      "description": "Escalation - Big LLM or Human agent",
+      "cost": "High"
+    }
+  },
+  "confidence_threshold": 0.5
+}
