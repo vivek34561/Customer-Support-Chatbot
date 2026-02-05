@@ -238,7 +238,20 @@
             if (meta && !isUser) {
                 const metaDiv = document.createElement('div');
                 metaDiv.className = 'message-meta';
-                metaDiv.textContent = `${meta.intent} (${(meta.confidence * 100).toFixed(0)}%) • ${meta.bucket} • ${meta.cost_tier} cost`;
+                
+                // Sentiment emoji
+                const sentimentEmoji = meta.sentiment === 'POSITIVE' ? '😊' : 
+                                      meta.sentiment === 'NEGATIVE' ? '😟' : '😐';
+                
+                // Build meta text
+                let metaText = `${meta.intent} (${(meta.confidence * 100).toFixed(0)}%) • ${meta.bucket} • ${meta.cost_tier} cost • ${sentimentEmoji} ${meta.sentiment}`;
+                
+                // Add escalation indicator
+                if (meta.escalated_by_sentiment) {
+                    metaText += ' ⚠️ Escalated';
+                }
+                
+                metaDiv.textContent = metaText;
                 contentDiv.appendChild(metaDiv);
             }
             
@@ -303,7 +316,10 @@
                     intent: data.intent,
                     confidence: data.confidence,
                     bucket: data.bucket,
-                    cost_tier: data.cost_tier
+                    cost_tier: data.cost_tier,
+                    sentiment: data.sentiment,
+                    sentiment_score: data.sentiment_score,
+                    escalated_by_sentiment: data.escalated_by_sentiment
                 });
 
             } catch (error) {

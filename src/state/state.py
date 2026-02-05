@@ -29,6 +29,11 @@ class ChatbotState(TypedDict):
     # Conversation history
     messages: Annotated[Sequence[BaseMessage], "conversation history"]
     
+    # Sentiment analysis
+    sentiment_label: str
+    sentiment_score: float
+    has_anger_keywords: bool
+    
     # Metadata
     cost_tier: str
     action: str

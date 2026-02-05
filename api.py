@@ -75,6 +75,9 @@ class ChatResponse(BaseModel):
     bucket: str = Field(..., description="Routing bucket (BUCKET_A/B/C)")
     cost_tier: str = Field(..., description="Cost tier (Zero/Low/High)")
     action: str = Field(..., description="Action taken")
+    sentiment: str = Field(..., description="Detected sentiment (POSITIVE/NEGATIVE)")
+    sentiment_score: float = Field(..., description="Sentiment confidence (0-1)")
+    escalated_by_sentiment: bool = Field(..., description="Whether bucket was overridden by sentiment")
     session_id: Optional[str] = Field(None, description="Session ID if provided")
 
     class Config:
@@ -86,6 +89,9 @@ class ChatResponse(BaseModel):
                 "bucket": "BUCKET_A",
                 "cost_tier": "Zero",
                 "action": "Direct template response",
+                "sentiment": "NEGATIVE",
+                "sentiment_score": 0.65,
+                "escalated_by_sentiment": False,
                 "session_id": "user-123"
             }
         }
@@ -152,6 +158,9 @@ async def chat(request: ChatRequest):
         # Process message through chatbot
         result = chatbot.process(request.message)
         
+        # Check if bucket was escalated by sentiment
+        escalated_by_sentiment = result.get('action') == 'escalate_sentiment'
+        
         return ChatResponse(
             response=result['final_response'],
             intent=result['predicted_intent'],
@@ -159,6 +168,9 @@ async def chat(request: ChatRequest):
             bucket=result['bucket'],
             cost_tier=result['cost_tier'],
             action=result['action'],
+            sentiment=result.get('sentiment_label', 'UNKNOWN'),
+            sentiment_score=result.get('sentiment_score', 0.0),
+            escalated_by_sentiment=escalated_by_sentiment,
             session_id=request.session_id
         )
     
