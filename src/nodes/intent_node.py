@@ -50,7 +50,11 @@ class IntentNode:
         return self.sentiment_analyzer
     
     def _analyze_sentiment(self, message: str) -> dict:
-        """Analyze sentiment with keyword filtering"""
+        """
+        Analyze sentiment with keyword filtering (Hybrid approach)
+        
+        Fixes false positives from DistilBERT SST-2 by requiring anger keywords
+        """
         analyzer = self._get_sentiment_analyzer()
         sentiment = analyzer(message)[0]
         
@@ -58,8 +62,17 @@ class IntentNode:
         message_lower = message.lower()
         has_anger = any(keyword in message_lower for keyword in self.ANGER_KEYWORDS)
         
+        # Override sentiment label if no anger keywords detected
+        # This prevents false positives (neutral questions marked as NEGATIVE)
+        if sentiment['label'] == 'NEGATIVE' and not has_anger:
+            # Model says negative, but no anger words = actually neutral
+            corrected_label = 'NEUTRAL'
+        else:
+            corrected_label = sentiment['label']
+        
         return {
-            'label': sentiment['label'],
+            'label': corrected_label,  # Corrected label
+            'raw_label': sentiment['label'],  # Original model output
             'score': sentiment['score'],
             'has_anger': has_anger
         }
