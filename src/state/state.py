@@ -25,6 +25,9 @@ class ChatbotState(TypedDict):
     
     # LLM generation
     final_response: str
+
+    # LLM usage (tokens)
+    llm_usage: Dict[str, int]
     
     # Conversation history
     messages: Annotated[Sequence[BaseMessage], "conversation history"]

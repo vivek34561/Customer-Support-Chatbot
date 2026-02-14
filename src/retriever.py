@@ -15,6 +15,7 @@ sys.path.insert(0, str(project_root))
 import json
 import numpy as np
 import faiss
+from functools import lru_cache
 from sentence_transformers import SentenceTransformer
 
 from src.config import (
@@ -38,6 +39,7 @@ class RAGRetriever:
         print(f"Loading embedding model: {EMBEDDING_MODEL}...")
         self.embedding_model = SentenceTransformer(EMBEDDING_MODEL)
         self.top_k = top_k
+        self._embedding_cache = {}  # Cache for query embeddings
         
         # Load FAISS index
         print("Loading FAISS index...")
@@ -63,7 +65,7 @@ class RAGRetriever:
     
     def create_query_embedding(self, query):
         """
-        Create embedding for query text
+        Create embedding for query text with caching
         
         Args:
             query: Query string
@@ -71,10 +73,21 @@ class RAGRetriever:
         Returns:
             Embedding vector (numpy array)
         """
+        # Check cache first
+        if query in self._embedding_cache:
+            return self._embedding_cache[query]
+        
+        # Generate embedding
         embedding = self.embedding_model.encode(
             query,
-            convert_to_numpy=True
+            convert_to_numpy=True,
+            show_progress_bar=False
         )
+        
+        # Cache it (limit cache size to prevent memory issues)
+        if len(self._embedding_cache) < 1000:
+            self._embedding_cache[query] = embedding
+        
         return embedding
     
     def retrieve(self, query, top_k=None):

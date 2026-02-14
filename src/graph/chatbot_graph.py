@@ -127,6 +127,7 @@ class CustomerSupportGraph:
             'retrieved_documents': [],
             'retrieved_context': '',
             'final_response': '',
+            'llm_usage': {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0},
             'messages': [],
             'cost_tier': '',
             'action': ''

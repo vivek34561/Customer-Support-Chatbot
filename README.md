@@ -246,6 +246,47 @@ python intent_router.py
 python test_sentiment_routing.py
 ```
 
+### Test Latency & Performance
+
+```bash
+python test_latency.py
+```
+
+**This will:**
+* Test 11+ queries across all buckets (A, B, C)
+* Measure client-side and server-side latency
+* Report statistics (mean, median, min, max, stddev)
+* Show bucket-wise performance breakdown
+* Provide performance insights and recommendations
+
+**Sample Output:**
+```
+📊 LATENCY STATISTICS
+Overall Performance:
+  Total Requests: 11
+  Successful: 11
+
+Server Processing Time:
+  Mean:   145.32 ms
+  Median: 89.45 ms
+  Min:    45.12 ms
+  Max:    542.78 ms
+
+Bucket Performance Breakdown:
+BUCKET_A (4 requests):
+  Mean:   52.34 ms   (fastest - template responses)
+  
+BUCKET_B (5 requests):
+  Mean:   198.67 ms  (RAG + LLM generation)
+  
+BUCKET_C (2 requests):
+  Mean:   78.91 ms   (fast escalation)
+
+💡 Performance Insights:
+  • BUCKET_A is 3.8x faster than BUCKET_B
+  • Average network overhead: 12.3 ms
+```
+
 ### Dry-Run Evaluation (500 samples)
 
 ```bash
@@ -389,6 +430,36 @@ python api.py
 | `/stats` | GET | Performance metrics |
 
 **API Documentation:** `http://localhost:8000/docs` (auto-generated)
+
+#### Chat Endpoint Example
+
+```bash
+curl -X POST "http://localhost:8000/chat" \
+  -H "Content-Type: application/json" \
+  -d '{"message": "How do I track my order?"}'
+```
+
+**Response includes latency measurement:**
+```json
+{
+  "response": "To track your order, please visit...",
+  "intent": "track_order",
+  "confidence": 0.98,
+  "bucket": "BUCKET_A",
+  "cost_tier": "Zero",
+  "action": "Direct template response",
+  "sentiment": "POSITIVE",
+  "sentiment_score": 0.89,
+  "escalated_by_sentiment": false,
+  "latency_ms": 52.34,
+  "session_id": null
+}
+```
+
+**Latency Monitoring:**
+* `latency_ms`: Server-side processing time (in milliseconds)
+* Response headers include `X-Process-Time` for total request time
+* Console logs show timing for every request: `⏱️ POST /chat - 0.052s`
 
 ---
 

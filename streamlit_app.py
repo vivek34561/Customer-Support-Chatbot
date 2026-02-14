@@ -8,6 +8,7 @@ Interactive chat interface with real-time intent detection and sentiment analysi
 import streamlit as st
 import requests
 import time
+import html
 from datetime import datetime
 from typing import Optional, Dict
 
@@ -121,7 +122,7 @@ def initialize_session_state():
 def check_api_health() -> Dict:
     """Check if API is running and healthy"""
     try:
-        response = requests.get(f"{API_URL}/health", timeout=5)
+        response = requests.get(f"{API_URL}/health", timeout=2)
         if response.status_code == 200:
             return response.json()
         return {"status": "unhealthy"}
@@ -129,10 +130,11 @@ def check_api_health() -> Dict:
         return {"status": "unreachable"}
 
 
+@st.cache_data(ttl=30)  # Cache for 30 seconds
 def get_api_stats() -> Optional[Dict]:
-    """Get chatbot statistics from API"""
+    """Get chatbot statistics from API (cached)"""
     try:
-        response = requests.get(f"{API_URL}/stats", timeout=5)
+        response = requests.get(f"{API_URL}/stats", timeout=2)
         if response.status_code == 200:
             return response.json()
         return None
@@ -140,10 +142,11 @@ def get_api_stats() -> Optional[Dict]:
         return None
 
 
+@st.cache_data(ttl=60)  # Cache for 60 seconds
 def get_supported_intents() -> Optional[Dict]:
-    """Get list of supported intents"""
+    """Get list of supported intents (cached)"""
     try:
-        response = requests.get(f"{API_URL}/intents", timeout=5)
+        response = requests.get(f"{API_URL}/intents", timeout=2)
         if response.status_code == 200:
             return response.json()
         return None
@@ -160,19 +163,19 @@ def send_message(user_message: str) -> Optional[Dict]:
                 "message": user_message,
                 "session_id": st.session_state.session_id
             },
-            timeout=30
+            timeout=15
         )
         
         if response.status_code == 200:
             return response.json()
         else:
-            st.error(f"API Error: {response.status_code} - {response.text}")
+            st.error(f"API Error: {response.status_code}")
             return None
     except requests.exceptions.Timeout:
-        st.error("⏱️ Request timeout. The API is taking too long to respond.")
+        st.error("⏱️ Request timeout. Try again.")
         return None
     except requests.exceptions.ConnectionError:
-        st.error("⚠️ Cannot connect to API. Make sure it's running on port 8000.")
+        st.error("⚠️ Cannot connect to API. Make sure it's running.")
         return None
     except Exception as e:
         st.error(f"❌ Error: {str(e)}")
@@ -197,6 +200,29 @@ def get_bucket_color(bucket: str) -> str:
         "BUCKET_C": "🔴"
     }
     return color_map.get(bucket, "⚪")
+
+
+def stream_text(text: str, delay: float = 0.01):
+    """Yield text in small chunks to simulate streaming output"""
+    for token in text.split():
+        yield token + " "
+        time.sleep(delay)
+
+
+def render_streaming_bubble(content: str, timestamp: str) -> str:
+    """Render streaming bubble HTML for incremental updates"""
+    safe_content = html.escape(content)
+    return f"""
+    <div style='margin: 10px 0;'>
+        <div style='background: rgba(15, 23, 42, 0.92); color: #e5e7eb; 
+                    padding: 12px 16px; border-radius: 18px; max-width: 75%;
+                    border: 1px solid rgba(148, 163, 184, 0.18);
+                    box-shadow: 0 2px 10px rgba(0,0,0,0.35);'>
+            <div style='word-wrap: break-word; white-space: pre-wrap; margin-bottom: 8px;'>{safe_content}</div>
+            <div style='font-size: 0.75em; opacity: 0.8; margin-top: 8px;'>{timestamp}</div>
+        </div>
+    </div>
+    """
 
 
 def render_sidebar():
@@ -306,49 +332,50 @@ def render_chat_message(message: Dict):
     content = message["content"]
     timestamp = message.get("timestamp", "")
     
+    # Escape HTML special characters in content
+    safe_content = html.escape(content)
+    
     if role == "user":
         st.markdown(f"""
         <div style='text-align: right; margin: 10px 0;'>
             <div style='display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                        color: white; padding: 12px 16px; border-radius: 18px; max-width: 70%; text-align: left;'>
-                {content}
+                        color: white; padding: 12px 16px; border-radius: 18px; max-width: 75%; text-align: left;'>
+                <div style='word-wrap: break-word; white-space: pre-wrap;'>{safe_content}</div>
                 <div style='font-size: 0.75em; opacity: 0.8; margin-top: 5px;'>{timestamp}</div>
             </div>
         </div>
         """, unsafe_allow_html=True)
     else:
-        # Bot message with metadata
-        meta_info = ""
+        st.markdown(f"""
+        <div style='margin: 10px 0;'>
+            <div style='background: rgba(15, 23, 42, 0.92); color: #e5e7eb; 
+                        padding: 12px 16px; border-radius: 18px; max-width: 75%;
+                        border: 1px solid rgba(148, 163, 184, 0.18);
+                        box-shadow: 0 2px 10px rgba(0,0,0,0.35);'>
+                <div style='word-wrap: break-word; white-space: pre-wrap; margin-bottom: 8px;'>{safe_content}</div>
+                <div style='font-size: 0.75em; opacity: 0.8; margin-top: 8px;'>{timestamp}</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Render metadata as plain captions to avoid raw HTML output
         if "metadata" in message:
             meta = message["metadata"]
             sentiment_emoji = get_sentiment_emoji(meta.get("sentiment", "NEUTRAL"))
             bucket_emoji = get_bucket_color(meta.get("bucket", ""))
-            
             escalated = "⚠️ ESCALATED" if meta.get("escalated_by_sentiment") else ""
-            
-            meta_info = f"""
-            <div style='font-size: 0.75em; opacity: 0.85; margin-top: 8px; color: #cbd5e1;'>
-                🎯 {meta.get('intent', 'unknown')} 
-                ({int(meta.get('confidence', 0) * 100)}%) • 
-                {bucket_emoji} {meta.get('bucket', 'N/A')} • 
-                {meta.get('cost_tier', 'N/A')} cost • 
-                {sentiment_emoji} {meta.get('sentiment', 'N/A')}
-                {' • ' + escalated if escalated else ''}
-            </div>
-            """
-        
-        st.markdown(f"""
-        <div style='margin: 10px 0;'>
-            <div style='background: rgba(15, 23, 42, 0.92); color: #e5e7eb; 
-                        padding: 12px 16px; border-radius: 18px; max-width: 70%;
-                        border: 1px solid rgba(148, 163, 184, 0.18);
-                        box-shadow: 0 2px 10px rgba(0,0,0,0.35);'>
-                {content}
-                {meta_info}
-                <div style='font-size: 0.75em; opacity: 0.8; margin-top: 5px;'>{timestamp}</div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+            latency_info = f"⏱️ {meta.get('latency_ms', 0):.0f}ms" if 'latency_ms' in meta else ""
+            cost_usd = meta.get("cost_usd", None)
+            cost_info = f"💵 ${cost_usd:.6f}" if isinstance(cost_usd, (int, float)) else ""
+
+            st.caption(f"🎯 {meta.get('intent', 'unknown')} ({int(meta.get('confidence', 0) * 100)}% confidence)")
+            st.caption(
+                f"{bucket_emoji} {meta.get('bucket', 'N/A')} • {meta.get('cost_tier', 'N/A')} cost"
+                f"{' • ' + cost_info if cost_info else ''}"
+            )
+            st.caption(
+                f"{sentiment_emoji} {meta.get('sentiment', 'N/A')}{' • ' + latency_info if latency_info else ''}{' • ' + escalated if escalated else ''}"
+            )
 
 
 def main():
@@ -405,20 +432,34 @@ def main():
             sentiment = response_data.get("sentiment", "NEUTRAL")
             if sentiment in st.session_state.sentiment_stats:
                 st.session_state.sentiment_stats[sentiment] += 1
+
+            # Stream the assistant response before committing to history
+            stream_timestamp = datetime.now().strftime("%H:%M")
+            stream_placeholder = st.empty()
+            streamed_text = ""
+            for chunk in stream_text(response_data.get("response", "")):
+                streamed_text += chunk
+                stream_placeholder.markdown(
+                    render_streaming_bubble(streamed_text, stream_timestamp),
+                    unsafe_allow_html=True
+                )
+            stream_placeholder.empty()
             
             # Add bot response
             bot_message = {
                 "role": "assistant",
                 "content": response_data.get("response", "Sorry, I couldn't process that."),
-                "timestamp": datetime.now().strftime("%H:%M"),
+                "timestamp": stream_timestamp,
                 "metadata": {
                     "intent": response_data.get("intent"),
                     "confidence": response_data.get("confidence"),
                     "bucket": response_data.get("bucket"),
                     "cost_tier": response_data.get("cost_tier"),
+                    "cost_usd": response_data.get("cost_usd", 0.0),
                     "sentiment": response_data.get("sentiment"),
                     "sentiment_score": response_data.get("sentiment_score"),
-                    "escalated_by_sentiment": response_data.get("escalated_by_sentiment")
+                    "escalated_by_sentiment": response_data.get("escalated_by_sentiment"),
+                    "latency_ms": response_data.get("latency_ms", 0)
                 }
             }
             st.session_state.messages.append(bot_message)

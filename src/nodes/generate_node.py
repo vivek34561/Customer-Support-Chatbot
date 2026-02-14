@@ -7,6 +7,20 @@ Generates response using LLM with context.
 
 import re
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+from langchain_core.callbacks import BaseCallbackHandler
+
+try:
+    from langchain.callbacks.tracers import LangChainTracer
+except Exception:
+    try:
+        from langchain_core.tracers import LangChainTracer
+    except Exception:
+        LangChainTracer = None
+
+try:
+    from langsmith import Client as LangSmithClient
+except Exception:
+    LangSmithClient = None
 
 from src.state import ChatbotState
 from src.llm import (
@@ -17,6 +31,82 @@ from src.llm import (
     get_escalation_prompt,
     get_direct_response
 )
+from src.config import (
+    LANGCHAIN_TRACING_V2,
+    LANGCHAIN_API_KEY,
+    LANGCHAIN_PROJECT,
+    LLM_INPUT_COST_PER_1M,
+    LLM_OUTPUT_COST_PER_1M
+)
+
+
+def _extract_usage_from_response(response) -> dict:
+    """Extract token usage from an LLM response."""
+    usage = {}
+
+    if hasattr(response, "usage_metadata") and response.usage_metadata:
+        usage = response.usage_metadata
+
+    if not usage and hasattr(response, "response_metadata"):
+        metadata = response.response_metadata or {}
+        usage = metadata.get("token_usage") or metadata.get("usage") or {}
+
+    input_tokens = usage.get("input_tokens") or usage.get("prompt_tokens") or 0
+    output_tokens = usage.get("output_tokens") or usage.get("completion_tokens") or 0
+
+    return {
+        "input_tokens": int(input_tokens),
+        "output_tokens": int(output_tokens),
+        "total_tokens": int(input_tokens) + int(output_tokens)
+    }
+
+
+class CostTrackingCallback(BaseCallbackHandler):
+    """Attach cost/token metadata to LangSmith runs."""
+
+    def __init__(self, client: LangSmithClient):
+        self.client = client
+
+    def on_llm_end(self, response, *, run_id, **kwargs):
+        if not self.client:
+            return
+
+        usage = _extract_usage_from_response(response)
+        input_tokens = usage.get("input_tokens", 0)
+        output_tokens = usage.get("output_tokens", 0)
+        cost_usd = (
+            (input_tokens * LLM_INPUT_COST_PER_1M) + (output_tokens * LLM_OUTPUT_COST_PER_1M)
+        ) / 1_000_000
+        input_cost = (input_tokens * LLM_INPUT_COST_PER_1M) / 1_000_000
+        output_cost = (output_tokens * LLM_OUTPUT_COST_PER_1M) / 1_000_000
+
+        try:
+            self.client.update_run(
+                run_id,
+                prompt_tokens=input_tokens,
+                completion_tokens=output_tokens,
+                total_tokens=usage.get("total_tokens", 0),
+                prompt_cost=round(input_cost, 6),
+                completion_cost=round(output_cost, 6),
+                total_cost=round(cost_usd, 6),
+                extra={
+                    "metadata": {
+                        "input_tokens": input_tokens,
+                        "output_tokens": output_tokens,
+                        "cost_usd": round(cost_usd, 6)
+                    },
+                    "usage": {
+                        "input_tokens": input_tokens,
+                        "output_tokens": output_tokens,
+                        "total_tokens": usage.get("total_tokens", 0),
+                        "input_cost": round(input_cost, 6),
+                        "output_cost": round(output_cost, 6),
+                        "total_cost": round(cost_usd, 6)
+                    }
+                }
+            )
+        except Exception:
+            pass
 
 
 class GenerateNode:
@@ -25,7 +115,16 @@ class GenerateNode:
     def __init__(self):
         """Initialize LLM factory"""
         self.llm_factory = LLMFactory()
+        self._callbacks = []
+        if LangChainTracer and LANGCHAIN_API_KEY and LANGCHAIN_TRACING_V2.lower() == "true":
+            self._callbacks = [LangChainTracer(project_name=LANGCHAIN_PROJECT)]
+            if LangSmithClient:
+                self._callbacks.append(CostTrackingCallback(LangSmithClient()))
         print("  ✓ Generation node initialized")
+
+    def _extract_usage(self, response) -> dict:
+        """Extract token usage from LLM response metadata"""
+        return _extract_usage_from_response(response)
     
     def _clean_response(self, response: str) -> str:
         """
@@ -65,6 +164,7 @@ class GenerateNode:
         Returns:
             Direct response
         """
+        state['llm_usage'] = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
         intent = state['predicted_intent']
         return get_direct_response(intent)
     
@@ -90,7 +190,13 @@ class GenerateNode:
         )
         
         # Generate response
-        response = llm.invoke([system_msg, user_msg])
+        if self._callbacks:
+            response = llm.invoke([system_msg, user_msg], config={"callbacks": self._callbacks})
+        else:
+            response = llm.invoke([system_msg, user_msg])
+
+        # Store token usage for cost calculation
+        state['llm_usage'] = self._extract_usage(response)
         
         # Clean response (remove thinking tags, formatting issues)
         cleaned_response = self._clean_response(response.content)
@@ -109,6 +215,7 @@ class GenerateNode:
         """
         # For now, return escalation message
         # Can be extended to use GPT-4 or route to human
+        state['llm_usage'] = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
         intent = state['predicted_intent']
         
         escalation_messages = {

@@ -7,12 +7,15 @@ REST API for customer support chatbot with intent-based routing.
 
 import sys
 from pathlib import Path
+import time
+import os
+from datetime import datetime
 
 # Add project root to path
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, List
@@ -20,15 +23,44 @@ import uvicorn
 from contextlib import asynccontextmanager
 
 from src.graph import CustomerSupportGraph
+from src.config import (
+    LLM_INPUT_COST_PER_1M,
+    LLM_OUTPUT_COST_PER_1M,
+    LANGCHAIN_TRACING_V2,
+    LANGCHAIN_API_KEY,
+    LANGCHAIN_PROJECT,
+    LANGCHAIN_ENDPOINT
+)
+
+try:
+    from langsmith import Client as LangSmithClient
+except Exception:
+    LangSmithClient = None
 
 # Global chatbot instance
 chatbot = None
+langsmith_client = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize chatbot on startup"""
     global chatbot
+    global langsmith_client
+    # Enable LangSmith tracing if configured
+    if LANGCHAIN_API_KEY:
+        os.environ["LANGCHAIN_API_KEY"] = LANGCHAIN_API_KEY
+    os.environ["LANGCHAIN_TRACING_V2"] = LANGCHAIN_TRACING_V2
+    os.environ["LANGCHAIN_PROJECT"] = LANGCHAIN_PROJECT
+    if LANGCHAIN_ENDPOINT:
+        os.environ["LANGCHAIN_ENDPOINT"] = LANGCHAIN_ENDPOINT
+
+    if LangSmithClient and LANGCHAIN_API_KEY and LANGCHAIN_TRACING_V2.lower() == "true":
+        try:
+            langsmith_client = LangSmithClient()
+        except Exception:
+            langsmith_client = None
+
     print("🚀 Initializing chatbot...")
     chatbot = CustomerSupportGraph()
     print("✅ Chatbot ready!\n")
@@ -52,6 +84,23 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# Timing middleware for latency measurement
+@app.middleware("http")
+async def add_timing_header(request: Request, call_next):
+    """Add request timing information to response headers and logs"""
+    start_time = time.time()
+    response = await call_next(request)
+    process_time = time.time() - start_time
+    
+    # Add timing header to response
+    response.headers["X-Process-Time"] = f"{process_time:.3f}"
+    
+    # Log timing information
+    print(f"⏱️  {request.method} {request.url.path} - {process_time:.3f}s")
+    
+    return response
 
 
 # Request/Response Models
@@ -78,6 +127,8 @@ class ChatResponse(BaseModel):
     sentiment: str = Field(..., description="Detected sentiment (POSITIVE/NEGATIVE)")
     sentiment_score: float = Field(..., description="Sentiment confidence (0-1)")
     escalated_by_sentiment: bool = Field(..., description="Whether bucket was overridden by sentiment")
+    latency_ms: float = Field(..., description="Processing time in milliseconds")
+    cost_usd: float = Field(..., description="Estimated LLM cost in USD")
     session_id: Optional[str] = Field(None, description="Session ID if provided")
 
     class Config:
@@ -92,6 +143,7 @@ class ChatResponse(BaseModel):
                 "sentiment": "NEGATIVE",
                 "sentiment_score": 0.65,
                 "escalated_by_sentiment": False,
+                "cost_usd": 0.0,
                 "session_id": "user-123"
             }
         }
@@ -117,6 +169,72 @@ async def root():
             "docs": "/docs"
         }
     }
+
+def _log_langsmith_request(
+    message: str,
+    session_id: Optional[str],
+    result: dict,
+    cost_usd: float,
+    latency_ms: float
+) -> None:
+    """Log request metadata to LangSmith for all buckets."""
+    if not langsmith_client:
+        return
+
+    try:
+        usage = result.get("llm_usage", {}) or {}
+        inputs = {
+            "message": message,
+            "session_id": session_id
+        }
+        outputs = {
+            "response": result.get("final_response"),
+            "intent": result.get("predicted_intent"),
+            "bucket": result.get("bucket")
+        }
+        input_tokens = usage.get("input_tokens", 0)
+        output_tokens = usage.get("output_tokens", 0)
+        total_tokens = usage.get("total_tokens", 0)
+        input_cost = (input_tokens * LLM_INPUT_COST_PER_1M) / 1_000_000
+        output_cost = (output_tokens * LLM_OUTPUT_COST_PER_1M) / 1_000_000
+
+        metadata = {
+            "cost_usd": round(cost_usd, 6),
+            "latency_ms": round(latency_ms, 2),
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "total_tokens": total_tokens,
+            "cost_tier": result.get("cost_tier"),
+            "action": result.get("action")
+        }
+
+        usage_metadata = {
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "total_tokens": total_tokens,
+            "input_cost": round(input_cost, 6),
+            "output_cost": round(output_cost, 6),
+            "total_cost": round(cost_usd, 6)
+        }
+
+        langsmith_client.create_run(
+            name="api.chat",
+            run_type="chain",
+            project_name=LANGCHAIN_PROJECT,
+            inputs=inputs,
+            outputs=outputs,
+            extra={"metadata": metadata, "usage": usage_metadata},
+            prompt_tokens=input_tokens,
+            completion_tokens=output_tokens,
+            total_tokens=total_tokens,
+            prompt_cost=round(input_cost, 6),
+            completion_cost=round(output_cost, 6),
+            total_cost=round(cost_usd, 6),
+            start_time=datetime.utcnow(),
+            end_time=datetime.utcnow()
+        )
+    except Exception:
+        pass
 
 
 @app.get("/health", response_model=HealthResponse, tags=["System"])
@@ -155,11 +273,33 @@ async def chat(request: ChatRequest):
         )
     
     try:
+        # Measure processing time
+        start_time = time.time()
+        
         # Process message through chatbot
         result = chatbot.process(request.message)
         
+        # Calculate latency in milliseconds
+        latency_ms = (time.time() - start_time) * 1000
+        
         # Check if bucket was escalated by sentiment
         escalated_by_sentiment = result.get('action') == 'escalate_sentiment'
+
+        # Estimate cost using token usage (if available)
+        usage = result.get('llm_usage', {}) or {}
+        input_tokens = usage.get('input_tokens', 0)
+        output_tokens = usage.get('output_tokens', 0)
+        cost_usd = (
+            (input_tokens * LLM_INPUT_COST_PER_1M) + (output_tokens * LLM_OUTPUT_COST_PER_1M)
+        ) / 1_000_000
+
+        _log_langsmith_request(
+            request.message,
+            request.session_id,
+            result,
+            cost_usd,
+            latency_ms
+        )
         
         return ChatResponse(
             response=result['final_response'],
@@ -171,6 +311,8 @@ async def chat(request: ChatRequest):
             sentiment=result.get('sentiment_label', 'UNKNOWN'),
             sentiment_score=result.get('sentiment_score', 0.0),
             escalated_by_sentiment=escalated_by_sentiment,
+            latency_ms=round(latency_ms, 2),
+            cost_usd=round(cost_usd, 6),
             session_id=request.session_id
         )
     
