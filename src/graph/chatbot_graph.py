@@ -9,6 +9,7 @@ from langgraph.graph import StateGraph, END
 
 from src.state import ChatbotState
 from src.nodes import IntentNode, RetrieveNode, GenerateNode
+from src.llm.prompts import has_direct_response
 
 
 class CustomerSupportGraph:
@@ -19,9 +20,9 @@ class CustomerSupportGraph:
         print("Initializing Customer Support Graph...")
         
         # Initialize nodes
-        self.intent_node = IntentNode()
-        self.retrieve_node = RetrieveNode()
-        self.generate_node = GenerateNode()
+        self.intent_node = IntentNode() # Intent classification node (BUCKET_A, BUCKET_B, BUCKET_C)
+        self.retrieve_node = RetrieveNode() # Retrieval node (only invoked for BUCKET_B)
+        self.generate_node = GenerateNode() # Generation node (invoked for all buckets, but with different context)
         
         # Build graph
         self.graph = self._build_graph()
@@ -32,17 +33,37 @@ class CustomerSupportGraph:
         """
         Conditional edge: Determine if retrieval is needed
         
+        Routing logic:
+        - BUCKET_A with missing template → Route to BUCKET_B (retrieve)
+        - BUCKET_B → Always retrieve
+        - BUCKET_C → No retrieval (escalation)
+        
         Args:
             state: Current state
             
         Returns:
-            Next node name
+            Next node name ('retrieve' or 'generate')
         """
         bucket = state['bucket']
         
-        # Only retrieve for BUCKET_B
+        # BUCKET_A: Check if template exists
+        if bucket == 'BUCKET_A':
+            intent = state['predicted_intent']
+            if not has_direct_response(intent):
+                # Template missing - fallback to RAG
+                print(f"  ⚠️  Template missing for '{intent}' → Routing to RAG (BUCKET_B)")
+                state['bucket'] = 'BUCKET_B'
+                state['cost_tier'] = 'low'
+                return "retrieve"
+            else:
+                # Template exists - no retrieval needed
+                return "generate"
+        
+        # BUCKET_B: Always retrieve
         if bucket == 'BUCKET_B':
             return "retrieve"
+        
+        # BUCKET_C: Escalation - no retrieval
         else:
             return "generate"
     
@@ -59,27 +80,27 @@ class CustomerSupportGraph:
         workflow = StateGraph(ChatbotState)
         
         # Add nodes
-        workflow.add_node("intent", self.intent_node)
-        workflow.add_node("retrieve", self.retrieve_node)
-        workflow.add_node("generate", self.generate_node)
+        workflow.add_node("intent", self.intent_node) # Intent classification node (BUCKET_A, BUCKET_B, BUCKET_C)
+        workflow.add_node("retrieve", self.retrieve_node) # Retrieval node (only invoked for BUCKET_B)
+        workflow.add_node("generate", self.generate_node) # Generation node (invoked for all buckets, but with different context)
         
         # Set entry point
-        workflow.set_entry_point("intent")
+        workflow.set_entry_point("intent") # Start with intent classification
         
         # Add conditional edge after intent
         workflow.add_conditional_edges(
-            "intent",
+            "intent", # From intent node
             self._should_retrieve,
             {
-                "retrieve": "retrieve",
-                "generate": "generate"
+                "retrieve": "retrieve",  # If BUCKET_B, go to retrieve
+                "generate": "generate"  # If BUCKET_A or BUCKET_C, skip retrieval and go to generate
             }
         )
         
         # Add edges
-        workflow.add_edge("retrieve", "generate")
+        workflow.add_edge("retrieve", "generate") # After retrieval, always go to generate
         workflow.add_edge("generate", END)
-        
+        print(workflow.compile())
         # Compile
         return workflow.compile()
     

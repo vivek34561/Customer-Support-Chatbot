@@ -32,7 +32,7 @@ TOP_K_RETRIEVAL = 3
 
 # LLM configuration (Groq)
 LLM_MODEL = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")  # Groq model
-LLM_TEMPERATURE = 0.7
+LLM_TEMPERATURE = 0.3
 LLM_MAX_TOKENS = 500
 BIG_LLM_MODEL = os.getenv("BIG_LLM_MODEL", "llama-3.3-70b-versatile")  # For escalations
 

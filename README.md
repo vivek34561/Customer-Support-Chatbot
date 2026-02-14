@@ -124,13 +124,41 @@ ENABLE_SENTIMENT_ANALYSIS=true
 
 ### Run the Chatbot
 
-#### Option 1: Interactive CLI
+#### Option 1: Streamlit UI (Recommended) 🎨
+
+**Quick Launch:**
+```bash
+# Windows
+launch_streamlit.bat
+
+# Linux/Mac
+chmod +x launch_streamlit.sh
+./launch_streamlit.sh
+```
+
+**Manual Launch:**
+```bash
+# Terminal 1: Start FastAPI backend
+python api.py
+
+# Terminal 2: Start Streamlit UI
+streamlit run streamlit_app.py
+```
+
+The Streamlit UI will open automatically at `http://localhost:8501` with:
+- 💬 Real-time chat interface
+- 📊 Live analytics dashboard
+- 🎭 Sentiment tracking
+- 🎯 Intent visualization
+- 📦 Bucket distribution stats
+
+#### Option 2: Interactive CLI
 
 ```bash
 python src/main.py interactive
 ```
 
-#### Option 2: REST API
+#### Option 3: REST API Only
 
 ```bash
 # Start FastAPI server
@@ -140,9 +168,9 @@ python api.py
 # Docs at http://localhost:8000/docs
 ```
 
-#### Option 3: Web Chat UI
+#### Option 4: HTML Chat UI (Legacy)
 
-Open `chat_ui.html` in your browser after starting the API.
+Start the API then open `chat_ui.html` in your browser.
 
 ### Test the API
 
@@ -190,7 +218,10 @@ Customer Support Chatbot/
 │   └── sementic_analysis.ipynb        # Sentiment testing
 │
 ├── api.py                             # FastAPI server
-├── chat_ui.html                       # Web interface
+├── streamlit_app.py                   # Streamlit UI (recommended)
+├── chat_ui.html                       # HTML UI (legacy)
+├── launch_streamlit.bat               # Windows launcher
+├── launch_streamlit.sh                # Linux/Mac launcher
 ├── intent_router.py                   # Routing module
 ├── build_rag_index.py                 # Index builder script
 ├── test_api.py                        # API tests

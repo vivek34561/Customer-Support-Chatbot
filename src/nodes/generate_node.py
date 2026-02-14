@@ -55,6 +55,10 @@ class GenerateNode:
         """
         Generate response for BUCKET_A (no LLM needed)
         
+        Note: If the template is missing, the graph's _should_retrieve() method
+        will have already routed this to BUCKET_B (RAG), so this method
+        will only be called if the template exists.
+        
         Args:
             state: Current state
             

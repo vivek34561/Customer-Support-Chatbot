@@ -8,7 +8,8 @@ from src.llm.prompts import (
     ESCALATION_SYSTEM_PROMPT,
     get_rag_prompt,
     get_escalation_prompt,
-    get_direct_response
+    get_direct_response,
+    has_direct_response
 )
 
 __all__ = [
@@ -19,5 +20,6 @@ __all__ = [
     'ESCALATION_SYSTEM_PROMPT',
     'get_rag_prompt',
     'get_escalation_prompt',
-    'get_direct_response'
+    'get_direct_response',
+    'has_direct_response'
 ]

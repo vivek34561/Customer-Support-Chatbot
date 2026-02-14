@@ -151,3 +151,16 @@ def get_direct_response(intent: str, fallback: str = None) -> str:
         intent,
         fallback or "I can help you with that. Could you please provide more details?"
     )
+
+
+def has_direct_response(intent: str) -> bool:
+    """
+    Check if a direct response template exists for the intent
+    
+    Args:
+        intent: Intent to check
+        
+    Returns:
+        True if template exists, False otherwise
+    """
+    return intent in DIRECT_RESPONSE_TEMPLATES
